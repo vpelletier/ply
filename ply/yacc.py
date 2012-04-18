@@ -971,6 +971,61 @@ class LRParser:
             # Call an error function here
             raise RuntimeError("yacc: internal parser error!!!\n")
 
+    def startPush(self):
+        """
+        (Re)Start a push-based parsing sequence.
+
+        (Re)Initialises parsing state.
+        """
+        self._push_lookaheadstack = []
+        self._push_pslice = pslice = YaccProduction(None)
+        pslice.parser = self
+        self.statestack = [0]
+        self.symstack = [YaccSymbolEnd()]
+
+    def push(self, token):
+        if token is None:
+            token = YaccSymbolEnd()
+        symstack = self.symstack
+        statestack = self.statestack
+        actions = self.action
+        token_type = token.type
+        productions = self.productions
+        pslice = self._push_pslice
+        goto = self.goto
+        while True:
+            state_actions = actions[statestack[-1]]
+            try:
+                t = state_actions[token_type]
+            except KeyError:
+                self.errorfunc(token_type != '$end' and token or None)
+                return
+            if t > 0:
+                # shift a symbol on the stack
+                statestack.append(t)
+                symstack.append(token)
+            elif t < 0:
+                # reduce a symbol on the stack
+                p = productions[-t]
+                pname = p.name
+                plen  = p.len
+                sym = YaccSymbol()
+                sym.name = pname
+                sym.value = None
+                if plen:
+                    targ = symstack[-plen-1:]
+                    targ[0] = sym
+                    del symstack[-plen:]
+                    del statestack[-plen:]
+                else:
+                    targ = [sym]
+                pslice.slice = targ
+                p.callable(pslice)
+                statestack.append(goto[statestack[-1]][pname])
+                symstack.append(sym)
+                continue
+            break
+
 # -----------------------------------------------------------------------------
 #                          === Grammar Representation ===
 #
