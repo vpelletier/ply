@@ -978,6 +978,7 @@ class LRParser:
         (Re)Initialises parsing state.
         """
         self._push_pslice = pslice = YaccProduction(None)
+        self._push_error_count = 0
         pslice.parser = self
         self.statestack = [0]
         self.symstack = [YaccSymbolEnd()]
@@ -997,12 +998,53 @@ class LRParser:
             try:
                 t = state_actions[token_type]
             except KeyError:
-                self.errorfunc(token_type != '$end' and token or None)
-                return
+                errorcount = self._push_error_count
+                if errorcount == 0 or self.errorok:
+                    self.errorok = 0
+                    errtoken = token
+                    if token_type == '$end':
+                        errtoken = None
+                    if self.errorfunc:
+                        #if errtoken and not hasattr(errtoken, 'lexer'):
+                        #    errtoken.lexer = lexer
+                        tok = self.errorfunc(errtoken)
+                        if self.errorok:
+                            # For compatibility with ply.yacc API, errorfunc
+                            # could also call push.
+                            self.push(tok)
+                            return
+                    else:
+                        if errtoken:
+                            sys.stderr.write("yacc: Syntax error at line %d, token=%s\n" % (getattr(token, 'lineno', 0), token_type))
+                        else:
+                            sys.stderr.write("yacc: Parse error in input. EOF\n")
+                            return
+                else:
+                    self._push_error_count = error_count
+                if token_type == "$end":
+                    return
+                elif len(statestack) <= 1:
+                    statestack[:] = [0]
+                    return
+                elif token_type == 'error':
+                    symstack.pop()
+                    statestack.pop()
+                else:
+                    sym = symstack[-1]
+                    if sym.type == 'error':
+                        return
+                    t = YaccSymbolError()
+                    if hasattr(token, "lineno"):
+                        t.lineno = token.lineno
+                    t.value = token
+                    self.push(t)
+                continue
             if t > 0:
                 # shift a symbol on the stack
                 statestack.append(t)
                 symstack.append(token)
+                if self._push_error_count:
+                    self._push_error_count -= 1
             elif t < 0:
                 # reduce a symbol on the stack
                 p = productions[-t]
