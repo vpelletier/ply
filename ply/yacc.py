@@ -977,7 +977,6 @@ class LRParser:
 
         (Re)Initialises parsing state.
         """
-        self._push_lookaheadstack = []
         self._push_pslice = pslice = YaccProduction(None)
         pslice.parser = self
         self.statestack = [0]
